@@ -7,7 +7,7 @@ import string
 from dotenv import load_dotenv
 
 load_dotenv()
-TOKEN = os.getenv("MTU1NDE1MTg5NzcyNjcxODA0Mg.GTK3dJ.zuqiGnBSSclI10IZwrBFQHf2ufX12FobuPhjRU")
+TOKEN = os.getenv("DISCORD_TOKEN")
 GUILD_ID = int(os.getenv("GUILD_ID", "0"))
 
 # ==================== ХРАНИЛИЩЕ В ПАМЯТИ ====================
