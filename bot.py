@@ -12,6 +12,8 @@ load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 GUILD_ID = int(os.getenv("GUILD_ID", "1552734813209886750"))
 
+TOUR_HOST_ROLE_ID = 1547825149859078234
+
 REGIONS = {
     "Europe": "EU",
     "North America": "US",
@@ -30,6 +32,9 @@ ABILITIES = [
 ]
 
 tournaments = {}
+
+def has_host_role(member):
+    return any(r.id == TOUR_HOST_ROLE_ID for r in member.roles)
 
 def gen_room_code():
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
@@ -128,33 +133,45 @@ def build_bracket_text(t):
         icon = "[IN PROGRESS]" if m["status"] == "in_progress" else "[DONE]" if m["status"] == "finished" else "[WAIT]"
         winner_mark = " [WIN]" if m["winner"] else ""
         lines.append(f"`#{m['number']:02d}` {icon} **{p1}** vs **{p2}**{winner_mark}")
+
+    if t.get("winner"):
+        lines.append(f"\n**Tournament Winner: <@{t['winner']}>**")
+
     return "\n".join(lines)
 
 def build_tournament_embed(t):
     region_code = t.get("region", "EU")
     region_display = next((f"{n} ({c})" for n, c in REGIONS.items() if c == region_code), region_code)
+
+    description = "**CLASSIC**\n\n"
+    description += f"**Start** - {t.get('time_display', '—')}\n"
+    description += f"**Region** - `{region_display}`\n"
+    description += "**Version** - \n"
+    description += "―――――――――――――――――――――――――――――\n"
+    description += "**Tournament Details**\n"
+    description += "**Format** - `1v1`\n"
+    description += f"**Map** - `{t.get('map') or '—'}`\n"
+    description += f"**Ability** - `{t.get('ability') or '—'}`\n"
+    description += "**Registrations open**\n"
+    description += "**Top 4 also wins** `4K` - `[W] Classic J!`\n"
+    description += "―――――――――――――――――――――――――――――\n"
+    description += "**Prize Pool:**\n"
+    description += "**1st** - 6,000 Emeralds\n"
+    description += "**2nd** - 3,600 Emeralds\n"
+    description += "**Top 4** - 1,800 Emeralds\n"
+    description += "**Top 8** - 960 Emeralds\n"
+    description += "**Top 16** - 400 Emeralds\n"
+
+    if t.get("winner"):
+        description += "―――――――――――――――――――――――――――――\n"
+        description += f"**Winner: <@{t['winner']}>**\n"
+
+    description += "―――――――――――――――――――――――――――――\n"
+    description += "**Storm Arena** - Register using the buttons below!"
+
     embed = discord.Embed(
         title=f"{t['name']}",
-        description="**CLASSIC**\n\n"
-                    f"**Start** - {t.get('time_display', '—')}\n"
-                    f"**Region** - `{region_display}`\n"
-                    f"**Version** - \n"
-                    "―――――――――――――――――――――――――――――\n"
-                    "**Tournament Details**\n"
-                    "**Format** - `1v1`\n"
-                    f"**Map** - `{t.get('map') or '—'}`\n"
-                    f"**Ability** - `{t.get('ability') or '—'}`\n"
-                    "**Registrations open**\n"
-                    "**Top 4 also wins** `4K` - `[W] Classic J!`\n"
-                    "―――――――――――――――――――――――――――――\n"
-                    "**Prize Pool:**\n"
-                    "**1st** - 6,000 Emeralds\n"
-                    "**2nd** - 3,600 Emeralds\n"
-                    "**Top 4** - 1,800 Emeralds\n"
-                    "**Top 8** - 960 Emeralds\n"
-                    "**Top 16** - 400 Emeralds\n"
-                    "―――――――――――――――――――――――――――――\n"
-                    "**Storm Arena** - Register using the buttons below!",
+        description=description,
         color=discord.Color.purple()
     )
     embed.set_image(url="https://i.imgur.com/MRSAURq.png")
@@ -274,6 +291,9 @@ class MatchView(discord.ui.View):
         await self.handle_winner(interaction, 2)
 
     async def handle_winner(self, interaction, slot):
+        if interaction.user.id != self.host_id:
+            await interaction.response.send_message("Only the host can set the winner.", ephemeral=True)
+            return
         t = tournaments.get(self.host_id)
         if not t:
             await interaction.response.send_message("Tournament not found.", ephemeral=True)
@@ -344,7 +364,8 @@ class SetupModal(discord.ui.Modal, title="STORM Arena Tournament Setup"):
             "matches": [],
             "map": self.t_map.value,
             "ability": self.t_ability.value,
-            "region": region_code
+            "region": region_code,
+            "winner": None
         }
         embed = build_tournament_embed(tournaments[host_id])
         view = TournamentView(host_id)
@@ -369,13 +390,19 @@ bot = StormBot()
 async def on_ready():
     print(f"Bot {bot.user} is ready!")
 
-@bot.tree.command(name="create_tournament", description="Create a new tournament")
+@bot.tree.command(name="create_tournament", description="Create a new tournament (host role required)")
 async def create_tournament(interaction: discord.Interaction):
+    if not has_host_role(interaction.user):
+        await interaction.response.send_message("You don't have permission to create tournaments.", ephemeral=True)
+        return
     await interaction.response.send_modal(SetupModal())
 
-@bot.tree.command(name="qual", description="Add a player to the tournament")
+@bot.tree.command(name="qual", description="Add a player to the tournament (host only)")
 @app_commands.describe(user="Player")
 async def qual(interaction: discord.Interaction, user: discord.Member):
+    if not has_host_role(interaction.user):
+        await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
+        return
     t = get_tournament(interaction.user.id)
     if not t:
         await interaction.response.send_message("You have no active tournament.", ephemeral=True)
@@ -394,11 +421,17 @@ async def qual(interaction: discord.Interaction, user: discord.Member):
     await interaction.response.send_message(
         f"{user.mention} added ({len(t['players'])}/{t['max_players']}).")
 
-@bot.tree.command(name="start_tournament", description="Start the tournament and create the bracket")
+@bot.tree.command(name="start_tournament", description="Start the tournament (host only)")
 async def start_tournament(interaction: discord.Interaction):
+    if not has_host_role(interaction.user):
+        await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
+        return
     t = get_tournament(interaction.user.id)
     if not t:
         await interaction.response.send_message("You have no active tournament.", ephemeral=True)
+        return
+    if t["status"] == "finished":
+        await interaction.response.send_message("Tournament is already finished.", ephemeral=True)
         return
     if len(t["players"]) < 2:
         await interaction.response.send_message("Not enough players.", ephemeral=True)
@@ -412,8 +445,11 @@ async def start_tournament(interaction: discord.Interaction):
     t["bracket_message_id"] = msg.id
     await interaction.response.send_message("Tournament started!", ephemeral=True)
 
-@bot.tree.command(name="end_tour", description="End the tournament")
+@bot.tree.command(name="end_tour", description="End the tournament (host only)")
 async def end_tour(interaction: discord.Interaction):
+    if not has_host_role(interaction.user):
+        await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
+        return
     t = get_tournament(interaction.user.id)
     if not t:
         await interaction.response.send_message("You have no active tournament.", ephemeral=True)
@@ -425,10 +461,7 @@ async def end_tour(interaction: discord.Interaction):
     await update_tournament_message(interaction.user.id)
     await update_bracket_message(interaction.user.id)
 
-    final_match = next((m for m in t["matches"] if m["round"] == 4), None)
-    winner_text = "—"
-    if final_match and final_match["winner"]:
-        winner_text = f"<@{final_match['winner']}>"
+    winner_text = f"<@{t['winner']}>" if t.get("winner") else "—"
 
     embed = discord.Embed(
         title=f"{t['name']} — Tournament Finished",
@@ -437,12 +470,36 @@ async def end_tour(interaction: discord.Interaction):
     )
     await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name="match", description="Show match info")
-@app_commands.describe(number="Match number")
-async def match(interaction: discord.Interaction, number: int):
+@bot.tree.command(name="winner", description="Set the tournament winner (host only)")
+@app_commands.describe(user="Winner of the tournament")
+async def winner(interaction: discord.Interaction, user: discord.Member):
+    if not has_host_role(interaction.user):
+        await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
+        return
     t = get_tournament(interaction.user.id)
     if not t:
         await interaction.response.send_message("You have no active tournament.", ephemeral=True)
+        return
+    if t["status"] == "finished":
+        await interaction.response.send_message("Tournament is already finished.", ephemeral=True)
+        return
+    t["winner"] = user.id
+    await update_tournament_message(interaction.user.id)
+    await update_bracket_message(interaction.user.id)
+    await interaction.response.send_message(f"Winner set: {user.mention}")
+
+@bot.tree.command(name="match", description="Show match info (host only)")
+@app_commands.describe(number="Match number")
+async def match(interaction: discord.Interaction, number: int):
+    if not has_host_role(interaction.user):
+        await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
+        return
+    t = get_tournament(interaction.user.id)
+    if not t:
+        await interaction.response.send_message("You have no active tournament.", ephemeral=True)
+        return
+    if t["status"] == "finished":
+        await interaction.response.send_message("Tournament is already finished.", ephemeral=True)
         return
     m = next((x for x in t["matches"] if x["number"] == number), None)
     if not m:
@@ -460,12 +517,21 @@ async def match(interaction: discord.Interaction, number: int):
     view = MatchView(interaction.user.id, number)
     await interaction.response.send_message(embed=embed, view=view)
 
-@bot.tree.command(name="room", description="Send or set a room code for a match")
+@bot.tree.command(name="room", description="Send or set a room code for a match (host only)")
 @app_commands.describe(number="Match number", code="Room code (letters and digits). Leave empty for auto-generation.")
 async def room(interaction: discord.Interaction, number: int, code: str = None):
+    if not has_host_role(interaction.user):
+        await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
+        return
     t = get_tournament(interaction.user.id)
     if not t:
         await interaction.response.send_message("You have no active tournament.", ephemeral=True)
+        return
+    if t["status"] == "finished":
+        await interaction.response.send_message("Tournament is already finished.", ephemeral=True)
+        return
+    if t["status"] != "in_progress":
+        await interaction.response.send_message("Tournament has not started yet.", ephemeral=True)
         return
     m = next((x for x in t["matches"] if x["number"] == number), None)
     if not m:
@@ -494,10 +560,13 @@ async def room(interaction: discord.Interaction, number: int, code: str = None):
                 pass
     await update_bracket_message(interaction.user.id)
     await interaction.response.send_message(
-        f"Room code `{code}` sent to: {', '.join(sent) if sent else 'nobody'}")
+        f"Room code `{code}` sent to: {', '.join(sent) if sent else 'nobody'}", ephemeral=True)
 
-@bot.tree.command(name="bracket", description="Show current bracket")
+@bot.tree.command(name="bracket", description="Show current bracket (host only)")
 async def bracket(interaction: discord.Interaction):
+    if not has_host_role(interaction.user):
+        await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
+        return
     t = get_tournament(interaction.user.id)
     if not t:
         await interaction.response.send_message("You have no active tournament.", ephemeral=True)
