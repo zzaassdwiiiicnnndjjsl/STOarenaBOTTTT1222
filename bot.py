@@ -45,6 +45,7 @@ def parse_time_to_unix(time_str):
         hours, minutes = int(m.group(1)), int(m.group(2))
         now = datetime.datetime.now()
         target = now.replace(hour=hours, minute=minutes, second=0, microsecond=0)
+        target -= datetime.timedelta(hours=3)
         if target < now:
             target += datetime.timedelta(days=1)
         return int(target.timestamp())
@@ -144,8 +145,8 @@ def build_tournament_embed(t):
                     f"**Map** - `{t.get('map') or '—'}`\n"
                     f"**Ability** - `{t.get('ability') or '—'}`\n"
                     "**Registrations open**\n"
+                    "**Top 4 also wins** `4K` - `[W] Classic J!`\n"
                     "―――――――――――――――――――――――――――――\n"
-
                     "**Storm Arena** - Register using the buttons below!",
         color=discord.Color.purple()
     )
@@ -191,6 +192,10 @@ class TournamentView(discord.ui.View):
     def __init__(self, host_id):
         super().__init__(timeout=None)
         self.host_id = host_id
+        t = tournaments.get(host_id)
+        count = len(t["players"]) if t else 0
+        max_p = t["max_players"] if t else 16
+        self.register_button.label = f"{count}/{max_p} register"
 
     def _find_tournament(self, interaction):
         for tid, tour in tournaments.items():
@@ -198,7 +203,7 @@ class TournamentView(discord.ui.View):
                 return tid, tour
         return None, None
 
-    @discord.ui.button(label="Register", style=discord.ButtonStyle.success, row=0)
+    @discord.ui.button(label="0/16 register", style=discord.ButtonStyle.success, row=0)
     async def register_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         _, t = self._find_tournament(interaction)
         if not t or t["status"] != "registration":
@@ -215,6 +220,7 @@ class TournamentView(discord.ui.View):
             "username": interaction.user.display_name,
             "seed": len(t["players"]) + 1
         })
+        await update_tournament_message(self.host_id)
         await interaction.response.send_message(
             f"Вы зарегистрированы! ({len(t['players'])}/{t['max_players']})", ephemeral=True)
 
@@ -225,6 +231,7 @@ class TournamentView(discord.ui.View):
             await interaction.response.send_message("Регистрация закрыта.", ephemeral=True)
             return
         t["players"] = [p for p in t["players"] if p["user_id"] != interaction.user.id]
+        await update_tournament_message(self.host_id)
         await interaction.response.send_message("Вы отменили регистрацию.", ephemeral=True)
 
     @discord.ui.button(label="Players", style=discord.ButtonStyle.secondary, row=1)
