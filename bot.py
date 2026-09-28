@@ -158,12 +158,6 @@ def build_tournament_embed(t):
     description += "**Registrations open**\n"
     description += "**Top 4 also wins** `4K` - `[W] Classic J!`\n"
     description += "―――――――――――――――――――――――――――――\n"
-    description += "**Prize Pool:**\n"
-    description += "**1st** - 6,000 Emeralds\n"
-    description += "**2nd** - 3,600 Emeralds\n"
-    description += "**Top 4** - 1,800 Emeralds\n"
-    description += "**Top 8** - 960 Emeralds\n"
-    description += "**Top 16** - 400 Emeralds\n"
 
     if t.get("winner"):
         description += "―――――――――――――――――――――――――――――\n"
