@@ -283,7 +283,7 @@ class SetupModal(discord.ui.Modal, title="Настройка турнира STOR
                         "🏅 **Top 8** - 960 Emeralds\n"
                         "🎖️ **Top 16** - 400 Emeralds\n"
                         "―――――――――――――――――――――――――――――\n"
-                        "**NoobCorp** - Register using the buttons below!",
+                        "**Storm Arena** - Register using the buttons below!",
             color=discord.Color.purple()
         )
         embed.set_image(url="https://i.imgur.com/MRSAURq.png")
