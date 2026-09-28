@@ -12,8 +12,6 @@ load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 GUILD_ID = int(os.getenv("GUILD_ID", "1552734813209886750"))
 
-# ==================== ДАННЫЕ ====================
-
 REGIONS = {
     "Europe": "EU",
     "North America": "US",
@@ -52,9 +50,7 @@ ABILITIES = [
     "Spit", "Dice Roll", "Glider", "Power Jump", "Rewind", "Rock Slam"
 ]
 
-# ==================== ХРАНИЛИЩЕ ====================
-
-tournaments = {}  # tournaments[host_id] = {...}
+tournaments = {}
 
 def gen_room_code():
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
@@ -63,7 +59,6 @@ def get_tournament(host_id):
     return tournaments.get(host_id)
 
 def parse_time_to_unix(time_str):
-    """Пробует распарсить '17:15' и вернуть Unix timestamp на сегодня."""
     try:
         m = re.match(r"^(\d{1,2}):(\d{2})$", time_str.strip())
         if not m:
@@ -78,13 +73,10 @@ def parse_time_to_unix(time_str):
         return None
 
 def format_time(time_str):
-    """Если время в формате HH:MM — вернёт <t:...:R>, иначе — как есть."""
     ts = parse_time_to_unix(time_str)
     if ts:
         return f"<t:{ts}:R> (`{time_str}`)"
     return time_str
-
-# ==================== СЕТКА ====================
 
 def create_bracket(t):
     max_p = t["max_players"]
@@ -144,7 +136,7 @@ def get_player_name(t, user_id):
     return f"<@{user_id}>"
 
 def build_bracket_text(t):
-    lines = ["**🏆 ТУРНИРНАЯ СЕТКА**\n"]
+    lines = ["**ТУРНИРНАЯ СЕТКА**\n"]
     current_round = None
     round_names = {1: "Раунд 1", 2: "Четвертьфинал", 3: "Полуфинал", 4: "Финал"}
     for m in t["matches"]:
@@ -153,36 +145,34 @@ def build_bracket_text(t):
             lines.append(f"\n**── {round_names.get(m['round'], f'Раунд {m['round']}')} ──**")
         p1 = get_player_name(t, m["p1"])
         p2 = get_player_name(t, m["p2"])
-        icon = "🟢" if m["status"] == "in_progress" else "✅" if m["status"] == "finished" else "⏳"
-        winner_mark = " 🏆" if m["winner"] else ""
+        icon = "[IN PROGRESS]" if m["status"] == "in_progress" else "[DONE]" if m["status"] == "finished" else "[WAIT]"
+        winner_mark = " [WIN]" if m["winner"] else ""
         lines.append(f"`#{m['number']:02d}` {icon} **{p1}** vs **{p2}**{winner_mark}")
     return "\n".join(lines)
-
-# ==================== EMBED ====================
 
 def build_tournament_embed(t):
     region_code = t.get("region", "EU")
     region_display = next((f"{n} ({c})" for n, c in REGIONS.items() if c == region_code), region_code)
     embed = discord.Embed(
-        title=f"🏆 {t['name']}",
-        description="🏆 **CLASSIC**\n\n"
-                    f"🕒 **Start** - {t.get('time_display', '—')}\n"
-                    f"🌍 **Region** - `{region_display}`\n"
-                    f"⚙️ **Version** - \n"
+        title=f"{t['name']}",
+        description="**CLASSIC**\n\n"
+                    f"**Start** - {t.get('time_display', '—')}\n"
+                    f"**Region** - `{region_display}`\n"
+                    f"**Version** - \n"
                     "―――――――――――――――――――――――――――――\n"
-                    "📜 **Tournament Details**\n"
+                    "**Tournament Details**\n"
                     "**Format** - `1v1`\n"
                     f"**Map** - `{t.get('map') or 'Выберите карту ниже'}`\n"
                     f"**Ability** - `{t.get('ability') or 'Выберите способность ниже'}`\n"
-                    "🔒 **Registrations open**\n"
-                    "🏅 **Top 4 also wins** `4K` - `[W] Classic J!`\n"
+                    "**Registrations open**\n"
+                    "**Top 4 also wins** `4K` - `[W] Classic J!`\n"
                     "―――――――――――――――――――――――――――――\n"
-                    f"🎁 **Prize Total - 💎 {t.get('prize', '—')}**\n"
-                    "🥇 **1st** - 6,000 Emeralds\n"
-                    "🥈 **2nd** - 3,600 Emeralds\n"
-                    "🥉 **Top 4** - 1,800 Emeralds\n"
-                    "🏅 **Top 8** - 960 Emeralds\n"
-                    "🎖️ **Top 16** - 400 Emeralds\n"
+                    f"**Prize Total - {t.get('prize', '—')}**\n"
+                    "**1st** - 6,000 Emeralds\n"
+                    "**2nd** - 3,600 Emeralds\n"
+                    "**Top 4** - 1,800 Emeralds\n"
+                    "**Top 8** - 960 Emeralds\n"
+                    "**Top 16** - 400 Emeralds\n"
                     "―――――――――――――――――――――――――――――\n"
                     "**Storm Arena** - Register using the buttons below!",
         color=discord.Color.purple()
@@ -219,13 +209,11 @@ async def update_bracket_message(host_id):
     except Exception:
         return
     text = build_bracket_text(t)
-    embed = discord.Embed(title=f"🏆 {t['name']} — Сетка", description=text, color=discord.Color.purple())
+    embed = discord.Embed(title=f"{t['name']} — Сетка", description=text, color=discord.Color.purple())
     try:
         await msg.edit(embed=embed)
     except Exception:
         pass
-
-# ==================== SELECTS ====================
 
 class MapSelect(discord.ui.Select):
     def __init__(self, host_id):
@@ -234,7 +222,7 @@ class MapSelect(discord.ui.Select):
         for category, map_list in MAPS.items():
             for map_name in map_list:
                 options.append(discord.SelectOption(label=map_name[:100], description=category[:100]))
-        super().__init__(placeholder="🗺️ Выберите карту...", min_values=1, max_values=1,
+        super().__init__(placeholder="Выберите карту...", min_values=1, max_values=1,
                          options=options[:25], row=2)
 
     async def callback(self, interaction: discord.Interaction):
@@ -244,14 +232,13 @@ class MapSelect(discord.ui.Select):
             return
         t["map"] = self.values[0]
         await update_tournament_message(self.host_id)
-        await interaction.response.send_message(f"✅ Карта: **{self.values[0]}**", ephemeral=True)
-
+        await interaction.response.send_message(f"Карта: **{self.values[0]}**", ephemeral=True)
 
 class AbilitySelect(discord.ui.Select):
     def __init__(self, host_id):
         self.host_id = host_id
         options = [discord.SelectOption(label=a) for a in ABILITIES[:25]]
-        super().__init__(placeholder="⚡ Выберите способность...", min_values=1, max_values=1,
+        super().__init__(placeholder="Выберите способность...", min_values=1, max_values=1,
                          options=options, row=3)
 
     async def callback(self, interaction: discord.Interaction):
@@ -261,14 +248,13 @@ class AbilitySelect(discord.ui.Select):
             return
         t["ability"] = self.values[0]
         await update_tournament_message(self.host_id)
-        await interaction.response.send_message(f"✅ Способность: **{self.values[0]}**", ephemeral=True)
-
+        await interaction.response.send_message(f"Способность: **{self.values[0]}**", ephemeral=True)
 
 class RegionSelect(discord.ui.Select):
     def __init__(self, host_id):
         self.host_id = host_id
         options = [discord.SelectOption(label=f"{n} ({c})", value=c) for n, c in REGIONS.items()]
-        super().__init__(placeholder="🌍 Выберите регион...", min_values=1, max_values=1,
+        super().__init__(placeholder="Выберите регион...", min_values=1, max_values=1,
                          options=options, row=4)
 
     async def callback(self, interaction: discord.Interaction):
@@ -278,21 +264,17 @@ class RegionSelect(discord.ui.Select):
             return
         t["region"] = self.values[0]
         await update_tournament_message(self.host_id)
-        await interaction.response.send_message(f"✅ Регион: **{self.values[0]}**", ephemeral=True)
-
-# ==================== TOURNAMENT VIEW ====================
+        await interaction.response.send_message(f"Регион: **{self.values[0]}**", ephemeral=True)
 
 class TournamentView(discord.ui.View):
     def __init__(self, host_id):
         super().__init__(timeout=None)
         self.host_id = host_id
-        # Селекты — в нижних рядах
         self.add_item(MapSelect(host_id))
         self.add_item(AbilitySelect(host_id))
         self.add_item(RegionSelect(host_id))
 
     def _find_tournament(self, interaction):
-        """Ищет турнир по message_id."""
         for tid, tour in tournaments.items():
             if tour.get("message_id") == interaction.message.id:
                 return tid, tour
@@ -316,7 +298,7 @@ class TournamentView(discord.ui.View):
             "seed": len(t["players"]) + 1
         })
         await interaction.response.send_message(
-            f"✅ Вы зарегистрированы! ({len(t['players'])}/{t['max_players']})", ephemeral=True)
+            f"Вы зарегистрированы! ({len(t['players'])}/{t['max_players']})", ephemeral=True)
 
     @discord.ui.button(label="Unregister", style=discord.ButtonStyle.danger, row=0)
     async def unregister_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -325,7 +307,7 @@ class TournamentView(discord.ui.View):
             await interaction.response.send_message("Регистрация закрыта.", ephemeral=True)
             return
         t["players"] = [p for p in t["players"] if p["user_id"] != interaction.user.id]
-        await interaction.response.send_message("❌ Вы отменили регистрацию.", ephemeral=True)
+        await interaction.response.send_message("Вы отменили регистрацию.", ephemeral=True)
 
     @discord.ui.button(label="Players", style=discord.ButtonStyle.secondary, row=1)
     async def players_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -343,8 +325,6 @@ class TournamentView(discord.ui.View):
     @discord.ui.button(label="Host", style=discord.ButtonStyle.secondary, row=1)
     async def host_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message("Хост: STORM Arena", ephemeral=True)
-
-# ==================== MATCH VIEW ====================
 
 class MatchView(discord.ui.View):
     def __init__(self, host_id, match_number):
@@ -379,9 +359,7 @@ class MatchView(discord.ui.View):
         advance_winner(t, self.match_number, winner_id)
         await update_bracket_message(self.host_id)
         await interaction.response.send_message(
-            f"🏆 Победитель матча #{self.match_number}: <@{winner_id}>", ephemeral=True)
-
-# ==================== MODAL ====================
+            f"Победитель матча #{self.match_number}: <@{winner_id}>", ephemeral=True)
 
 class SetupModal(discord.ui.Modal, title="Настройка турнира STORM Arena"):
     t_name = discord.ui.TextInput(label="Название турнира", placeholder="Например: VrynTour1v1", required=True)
@@ -411,8 +389,6 @@ class SetupModal(discord.ui.Modal, title="Настройка турнира STOR
         msg = await interaction.original_response()
         tournaments[host_id]["message_id"] = msg.id
 
-# ==================== BOT ====================
-
 class StormBot(commands.Bot):
     def __init__(self):
         super().__init__(command_prefix="!", intents=discord.Intents.default())
@@ -429,8 +405,6 @@ bot = StormBot()
 @bot.event
 async def on_ready():
     print(f"Бот {bot.user} готов к работе!")
-
-# ==================== КОМАНДЫ ====================
 
 @bot.tree.command(name="create_tournament", description="Создать новый турнир")
 async def create_tournament(interaction: discord.Interaction):
@@ -455,7 +429,7 @@ async def qual(interaction: discord.Interaction, user: discord.Member):
     t["players"].append({"user_id": user.id, "username": user.display_name, "seed": len(t["players"]) + 1})
     await update_tournament_message(interaction.user.id)
     await interaction.response.send_message(
-        f"✅ {user.mention} добавлен ({len(t['players'])}/{t['max_players']}).")
+        f"{user.mention} добавлен ({len(t['players'])}/{t['max_players']}).")
 
 @bot.tree.command(name="start_tournament", description="Запустить турнир и создать сетку")
 async def start_tournament(interaction: discord.Interaction):
@@ -469,10 +443,10 @@ async def start_tournament(interaction: discord.Interaction):
     create_bracket(t)
     t["status"] = "in_progress"
     text = build_bracket_text(t)
-    embed = discord.Embed(title=f"🏆 {t['name']} — Сетка", description=text, color=discord.Color.purple())
+    embed = discord.Embed(title=f"{t['name']} — Сетка", description=text, color=discord.Color.purple())
     msg = await interaction.channel.send(embed=embed)
     t["bracket_message_id"] = msg.id
-    await interaction.response.send_message("✅ Турнир запущен!", ephemeral=True)
+    await interaction.response.send_message("Турнир запущен!", ephemeral=True)
 
 @bot.tree.command(name="match", description="Показать матч")
 @app_commands.describe(number="Номер матча")
@@ -488,7 +462,7 @@ async def match(interaction: discord.Interaction, number: int):
     p1 = get_player_name(t, m["p1"])
     p2 = get_player_name(t, m["p2"])
     embed = discord.Embed(
-        title=f"⚔️ Матч #{m['number']} (Раунд {m['round']})",
+        title=f"Матч #{m['number']} (Раунд {m['round']})",
         description=f"**{p1}** vs **{p2}**\n\n"
                     f"Статус: `{m['status']}`\n"
                     f"Код комнаты: `{m['room'] or 'не задан'}`",
@@ -518,13 +492,13 @@ async def room(interaction: discord.Interaction, number: int, code: str = None):
         if uid:
             try:
                 user = await bot.fetch_user(uid)
-                await user.send(f"🎮 **Матч #{m['number']}**\nКод комнаты: `{code}`\nУдачи!")
+                await user.send(f"Матч #{m['number']}\nКод комнаты: `{code}`\nУдачи!")
                 sent.append(f"<@{uid}>")
             except Exception:
                 pass
     await update_bracket_message(interaction.user.id)
     await interaction.response.send_message(
-        f"✅ Код `{code}` отправлен: {', '.join(sent) if sent else 'никому'}")
+        f"Код `{code}` отправлен: {', '.join(sent) if sent else 'никому'}")
 
 @bot.tree.command(name="bracket", description="Показать текущую сетку")
 async def bracket(interaction: discord.Interaction):
@@ -536,9 +510,7 @@ async def bracket(interaction: discord.Interaction):
         await interaction.response.send_message("Сетка ещё не создана. Запустите `/start_tournament`.", ephemeral=True)
         return
     text = build_bracket_text(t)
-    embed = discord.Embed(title=f"🏆 {t['name']} — Сетка", description=text, color=discord.Color.purple())
+    embed = discord.Embed(title=f"{t['name']} — Сетка", description=text, color=discord.Color.purple())
     await interaction.response.send_message(embed=embed)
-
-# ==================== ЗАПУСК ====================
 
 bot.run(TOKEN)
