@@ -12,7 +12,10 @@ load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 GUILD_ID = int(os.getenv("GUILD_ID", "1552734813209886750"))
 
-TOUR_HOST_ROLE_ID = 1547825149859078234
+TOUR_HOST_ROLE_IDS = [
+    1547825149859078234,
+    1554190894909882428
+]
 
 REGIONS = {
     "Europe": "EU",
@@ -34,7 +37,7 @@ ABILITIES = [
 tournaments = {}
 
 def has_host_role(member):
-    return any(r.id == TOUR_HOST_ROLE_ID for r in member.roles)
+    return any(r.id in TOUR_HOST_ROLE_IDS for r in member.roles)
 
 def gen_room_code():
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
