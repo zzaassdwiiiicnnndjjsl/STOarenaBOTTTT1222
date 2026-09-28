@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
-GUILD_ID = int(os.getenv("GUILD_ID", "0"))
+GUILD_ID = int(os.getenv("GUILD_ID", "1552734813209886750"))
 
 # ==================== ХРАНИЛИЩЕ В ПАМЯТИ ====================
 
@@ -424,5 +424,4 @@ async def bracket(interaction: discord.Interaction):
 
 # ==================== ЗАПУСК ====================
 
-bot.run(MTU1NDE1MTg5NzcyNjcxODA0Mg.GTK3dJ.zuqiGnBSSclI10IZwrBFQHf2ufX12FobuPhjRU"
-GUILD_ID="1552734813209886750)
+bot.run(TOKEN)
