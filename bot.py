@@ -156,7 +156,6 @@ def build_tournament_embed(t):
     description += f"**Map** - `{t.get('map') or '—'}`\n"
     description += f"**Ability** - `{t.get('ability') or '—'}`\n"
     description += "**Registrations open**\n"
-    description += "**Top 4 also wins** `4K` - `[W] Classic J!`\n"
     description += "―――――――――――――――――――――――――――――\n"
 
     if t.get("winner"):
