@@ -116,13 +116,13 @@ def get_player_name(t, user_id):
     return f"<@{user_id}>"
 
 def build_bracket_text(t):
-    lines = ["**ТУРНИРНАЯ СЕТКА**\n"]
+    lines = ["**TOURNAMENT BRACKET**\n"]
     current_round = None
-    round_names = {1: "Раунд 1", 2: "Четвертьфинал", 3: "Полуфинал", 4: "Финал"}
+    round_names = {1: "Round 1", 2: "Quarterfinal", 3: "Semifinal", 4: "Final"}
     for m in t["matches"]:
         if m["round"] != current_round:
             current_round = m["round"]
-            lines.append(f"\n**── {round_names.get(m['round'], f'Раунд {m['round']}')} ──**")
+            lines.append(f"\n**── {round_names.get(m['round'], f'Round {m['round']}')} ──**")
         p1 = get_player_name(t, m["p1"])
         p2 = get_player_name(t, m["p2"])
         icon = "[IN PROGRESS]" if m["status"] == "in_progress" else "[DONE]" if m["status"] == "finished" else "[WAIT]"
@@ -147,6 +147,13 @@ def build_tournament_embed(t):
                     "**Registrations open**\n"
                     "**Top 4 also wins** `4K` - `[W] Classic J!`\n"
                     "―――――――――――――――――――――――――――――\n"
+                    "**Prize Pool:**\n"
+                    "**1st** - 6,000 Emeralds\n"
+                    "**2nd** - 3,600 Emeralds\n"
+                    "**Top 4** - 1,800 Emeralds\n"
+                    "**Top 8** - 960 Emeralds\n"
+                    "**Top 16** - 400 Emeralds\n"
+                    "―――――――――――――――――――――――――――――\n"
                     "**Storm Arena** - Register using the buttons below!",
         color=discord.Color.purple()
     )
@@ -166,7 +173,8 @@ async def update_tournament_message(host_id):
     except Exception:
         return
     try:
-        await msg.edit(embed=build_tournament_embed(t), view=TournamentView(host_id))
+        view = TournamentView(host_id) if t["status"] == "registration" else None
+        await msg.edit(embed=build_tournament_embed(t), view=view)
     except Exception as e:
         print(f"update_tournament_message error: {e}")
 
@@ -182,7 +190,7 @@ async def update_bracket_message(host_id):
     except Exception:
         return
     text = build_bracket_text(t)
-    embed = discord.Embed(title=f"{t['name']} — Сетка", description=text, color=discord.Color.purple())
+    embed = discord.Embed(title=f"{t['name']} — Bracket", description=text, color=discord.Color.purple())
     try:
         await msg.edit(embed=embed)
     except Exception:
@@ -207,13 +215,13 @@ class TournamentView(discord.ui.View):
     async def register_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         _, t = self._find_tournament(interaction)
         if not t or t["status"] != "registration":
-            await interaction.response.send_message("Регистрация закрыта.", ephemeral=True)
+            await interaction.response.send_message("Registration is closed.", ephemeral=True)
             return
         if len(t["players"]) >= t["max_players"]:
-            await interaction.response.send_message("Турнир заполнен.", ephemeral=True)
+            await interaction.response.send_message("Tournament is full.", ephemeral=True)
             return
         if any(p["user_id"] == interaction.user.id for p in t["players"]):
-            await interaction.response.send_message("Вы уже зарегистрированы.", ephemeral=True)
+            await interaction.response.send_message("You are already registered.", ephemeral=True)
             return
         t["players"].append({
             "user_id": interaction.user.id,
@@ -222,34 +230,34 @@ class TournamentView(discord.ui.View):
         })
         await update_tournament_message(self.host_id)
         await interaction.response.send_message(
-            f"Вы зарегистрированы! ({len(t['players'])}/{t['max_players']})", ephemeral=True)
+            f"You are registered! ({len(t['players'])}/{t['max_players']})", ephemeral=True)
 
     @discord.ui.button(label="Unregister", style=discord.ButtonStyle.danger, row=0)
     async def unregister_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         _, t = self._find_tournament(interaction)
         if not t or t["status"] != "registration":
-            await interaction.response.send_message("Регистрация закрыта.", ephemeral=True)
+            await interaction.response.send_message("Registration is closed.", ephemeral=True)
             return
         t["players"] = [p for p in t["players"] if p["user_id"] != interaction.user.id]
         await update_tournament_message(self.host_id)
-        await interaction.response.send_message("Вы отменили регистрацию.", ephemeral=True)
+        await interaction.response.send_message("You have unregistered.", ephemeral=True)
 
     @discord.ui.button(label="Players", style=discord.ButtonStyle.secondary, row=1)
     async def players_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         _, t = self._find_tournament(interaction)
         if not t or not t["players"]:
-            await interaction.response.send_message("Список игроков пуст.", ephemeral=True)
+            await interaction.response.send_message("Player list is empty.", ephemeral=True)
             return
         text = "\n".join([f"`{p['seed']:02d}` <@{p['user_id']}> — {p['username']}" for p in t["players"]])
-        await interaction.response.send_message(f"**Игроки:**\n{text}", ephemeral=True)
+        await interaction.response.send_message(f"**Players:**\n{text}", ephemeral=True)
 
     @discord.ui.button(label="Locker", style=discord.ButtonStyle.secondary, row=1)
     async def locker_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("Ваш локер пуст.", ephemeral=True)
+        await interaction.response.send_message("Your locker is empty.", ephemeral=True)
 
     @discord.ui.button(label="Host", style=discord.ButtonStyle.secondary, row=1)
     async def host_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("Хост: STORM Arena", ephemeral=True)
+        await interaction.response.send_message("Host: STORM Arena", ephemeral=True)
 
 class MatchView(discord.ui.View):
     def __init__(self, host_id, match_number):
@@ -257,63 +265,63 @@ class MatchView(discord.ui.View):
         self.host_id = host_id
         self.match_number = match_number
 
-    @discord.ui.button(label="Победил игрок 1", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="Player 1 won", style=discord.ButtonStyle.success)
     async def win1(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.handle_winner(interaction, 1)
 
-    @discord.ui.button(label="Победил игрок 2", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="Player 2 won", style=discord.ButtonStyle.success)
     async def win2(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.handle_winner(interaction, 2)
 
     async def handle_winner(self, interaction, slot):
         t = tournaments.get(self.host_id)
         if not t:
-            await interaction.response.send_message("Турнир не найден.", ephemeral=True)
+            await interaction.response.send_message("Tournament not found.", ephemeral=True)
             return
         match = next((m for m in t["matches"] if m["number"] == self.match_number), None)
         if not match:
-            await interaction.response.send_message("Матч не найден.", ephemeral=True)
+            await interaction.response.send_message("Match not found.", ephemeral=True)
             return
         if match["winner"]:
-            await interaction.response.send_message("Победитель уже отмечен.", ephemeral=True)
+            await interaction.response.send_message("Winner already set.", ephemeral=True)
             return
         winner_id = match["p1"] if slot == 1 else match["p2"]
         if not winner_id:
-            await interaction.response.send_message("Игрок не определён.", ephemeral=True)
+            await interaction.response.send_message("Player not defined.", ephemeral=True)
             return
         advance_winner(t, self.match_number, winner_id)
         await update_bracket_message(self.host_id)
         await interaction.response.send_message(
-            f"Победитель матча #{self.match_number}: <@{winner_id}>", ephemeral=True)
+            f"Winner of match #{self.match_number}: <@{winner_id}>", ephemeral=True)
 
-class SetupModal(discord.ui.Modal, title="Настройка турнира STORM Arena"):
+class SetupModal(discord.ui.Modal, title="STORM Arena Tournament Setup"):
     t_name = discord.ui.TextInput(
-        label="Название турнира",
-        placeholder="Например: VrynTour1v1",
+        label="Tournament name",
+        placeholder="e.g. VrynTour1v1",
         required=True,
         max_length=100
     )
     t_time = discord.ui.TextInput(
-        label="Время начала (HH:MM)",
-        placeholder="Например: 17:15",
+        label="Start time (HH:MM)",
+        placeholder="e.g. 17:15",
         required=True,
         max_length=5
     )
     t_region = discord.ui.TextInput(
-        label="Регион (EU/US/CAM/INW/SA/ASIA)",
-        placeholder="Например: EU",
+        label="Region (EU/US/CAM/INW/SA/ASIA)",
+        placeholder="e.g. EU",
         required=True,
         max_length=10
     )
     t_map = discord.ui.TextInput(
-        label="Карта",
-        placeholder="Например: Jungle Roll",
+        label="Map",
+        placeholder="e.g. Jungle Roll",
         required=True,
         max_length=100
     )
     t_ability = discord.ui.TextInput(
-        label="Способность",
-        placeholder="Например: Punch",
+        label="Ability",
+        placeholder="e.g. Punch",
         required=True,
         max_length=50
     )
@@ -359,86 +367,119 @@ bot = StormBot()
 
 @bot.event
 async def on_ready():
-    print(f"Бот {bot.user} готов к работе!")
+    print(f"Bot {bot.user} is ready!")
 
-@bot.tree.command(name="create_tournament", description="Создать новый турнир")
+@bot.tree.command(name="create_tournament", description="Create a new tournament")
 async def create_tournament(interaction: discord.Interaction):
     await interaction.response.send_modal(SetupModal())
 
-@bot.tree.command(name="qual", description="Добавить игрока в турнир")
-@app_commands.describe(user="Игрок")
+@bot.tree.command(name="qual", description="Add a player to the tournament")
+@app_commands.describe(user="Player")
 async def qual(interaction: discord.Interaction, user: discord.Member):
     t = get_tournament(interaction.user.id)
     if not t:
-        await interaction.response.send_message("У вас нет активного турнира.", ephemeral=True)
+        await interaction.response.send_message("You have no active tournament.", ephemeral=True)
         return
     if t["status"] != "registration":
-        await interaction.response.send_message("Регистрация закрыта.", ephemeral=True)
+        await interaction.response.send_message("Registration is closed.", ephemeral=True)
         return
     if len(t["players"]) >= t["max_players"]:
-        await interaction.response.send_message("Турнир заполнен.", ephemeral=True)
+        await interaction.response.send_message("Tournament is full.", ephemeral=True)
         return
     if any(p["user_id"] == user.id for p in t["players"]):
-        await interaction.response.send_message(f"{user.mention} уже в турнире.", ephemeral=True)
+        await interaction.response.send_message(f"{user.mention} is already in the tournament.", ephemeral=True)
         return
     t["players"].append({"user_id": user.id, "username": user.display_name, "seed": len(t["players"]) + 1})
     await update_tournament_message(interaction.user.id)
     await interaction.response.send_message(
-        f"{user.mention} добавлен ({len(t['players'])}/{t['max_players']}).")
+        f"{user.mention} added ({len(t['players'])}/{t['max_players']}).")
 
-@bot.tree.command(name="start_tournament", description="Запустить турнир и создать сетку")
+@bot.tree.command(name="start_tournament", description="Start the tournament and create the bracket")
 async def start_tournament(interaction: discord.Interaction):
     t = get_tournament(interaction.user.id)
     if not t:
-        await interaction.response.send_message("У вас нет активного турнира.", ephemeral=True)
+        await interaction.response.send_message("You have no active tournament.", ephemeral=True)
         return
     if len(t["players"]) < 2:
-        await interaction.response.send_message("Недостаточно игроков.", ephemeral=True)
+        await interaction.response.send_message("Not enough players.", ephemeral=True)
         return
     create_bracket(t)
     t["status"] = "in_progress"
+    await update_tournament_message(interaction.user.id)
     text = build_bracket_text(t)
-    embed = discord.Embed(title=f"{t['name']} — Сетка", description=text, color=discord.Color.purple())
+    embed = discord.Embed(title=f"{t['name']} — Bracket", description=text, color=discord.Color.purple())
     msg = await interaction.channel.send(embed=embed)
     t["bracket_message_id"] = msg.id
-    await interaction.response.send_message("Турнир запущен!", ephemeral=True)
+    await interaction.response.send_message("Tournament started!", ephemeral=True)
 
-@bot.tree.command(name="match", description="Показать матч")
-@app_commands.describe(number="Номер матча")
+@bot.tree.command(name="end_tour", description="End the tournament")
+async def end_tour(interaction: discord.Interaction):
+    t = get_tournament(interaction.user.id)
+    if not t:
+        await interaction.response.send_message("You have no active tournament.", ephemeral=True)
+        return
+    if t["status"] == "finished":
+        await interaction.response.send_message("Tournament is already finished.", ephemeral=True)
+        return
+    t["status"] = "finished"
+    await update_tournament_message(interaction.user.id)
+    await update_bracket_message(interaction.user.id)
+
+    final_match = next((m for m in t["matches"] if m["round"] == 4), None)
+    winner_text = "—"
+    if final_match and final_match["winner"]:
+        winner_text = f"<@{final_match['winner']}>"
+
+    embed = discord.Embed(
+        title=f"{t['name']} — Tournament Finished",
+        description=f"Winner: {winner_text}",
+        color=discord.Color.gold()
+    )
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="match", description="Show match info")
+@app_commands.describe(number="Match number")
 async def match(interaction: discord.Interaction, number: int):
     t = get_tournament(interaction.user.id)
     if not t:
-        await interaction.response.send_message("У вас нет активного турнира.", ephemeral=True)
+        await interaction.response.send_message("You have no active tournament.", ephemeral=True)
         return
     m = next((x for x in t["matches"] if x["number"] == number), None)
     if not m:
-        await interaction.response.send_message(f"Матч #{number} не найден.", ephemeral=True)
+        await interaction.response.send_message(f"Match #{number} not found.", ephemeral=True)
         return
     p1 = get_player_name(t, m["p1"])
     p2 = get_player_name(t, m["p2"])
     embed = discord.Embed(
-        title=f"Матч #{m['number']} (Раунд {m['round']})",
+        title=f"Match #{m['number']} (Round {m['round']})",
         description=f"**{p1}** vs **{p2}**\n\n"
-                    f"Статус: `{m['status']}`\n"
-                    f"Код комнаты: `{m['room'] or 'не задан'}`",
+                    f"Status: `{m['status']}`\n"
+                    f"Room code: `{m['room'] or 'not set'}`",
         color=discord.Color.orange()
     )
     view = MatchView(interaction.user.id, number)
     await interaction.response.send_message(embed=embed, view=view)
 
-@bot.tree.command(name="room", description="Отправить игрокам код комнаты в DM")
-@app_commands.describe(number="Номер матча", code="Код (оставьте пустым для автогенерации)")
+@bot.tree.command(name="room", description="Send or set a room code for a match")
+@app_commands.describe(number="Match number", code="Room code (letters and digits). Leave empty for auto-generation.")
 async def room(interaction: discord.Interaction, number: int, code: str = None):
     t = get_tournament(interaction.user.id)
     if not t:
-        await interaction.response.send_message("У вас нет активного турнира.", ephemeral=True)
+        await interaction.response.send_message("You have no active tournament.", ephemeral=True)
         return
     m = next((x for x in t["matches"] if x["number"] == number), None)
     if not m:
-        await interaction.response.send_message(f"Матч #{number} не найден.", ephemeral=True)
+        await interaction.response.send_message(f"Match #{number} not found.", ephemeral=True)
         return
-    if not code:
+
+    if code:
+        code = re.sub(r"[^A-Za-z0-9]", "", code)
+        if not code:
+            await interaction.response.send_message("Room code must contain letters or digits.", ephemeral=True)
+            return
+    else:
         code = gen_room_code()
+
     m["room"] = code
     m["status"] = "in_progress"
 
@@ -447,25 +488,25 @@ async def room(interaction: discord.Interaction, number: int, code: str = None):
         if uid:
             try:
                 user = await bot.fetch_user(uid)
-                await user.send(f"Матч #{m['number']}\nКод комнаты: `{code}`\nУдачи!")
+                await user.send(f"Match #{m['number']}\nRoom code: `{code}`\nGood luck!")
                 sent.append(f"<@{uid}>")
             except Exception:
                 pass
     await update_bracket_message(interaction.user.id)
     await interaction.response.send_message(
-        f"Код `{code}` отправлен: {', '.join(sent) if sent else 'никому'}")
+        f"Room code `{code}` sent to: {', '.join(sent) if sent else 'nobody'}")
 
-@bot.tree.command(name="bracket", description="Показать текущую сетку")
+@bot.tree.command(name="bracket", description="Show current bracket")
 async def bracket(interaction: discord.Interaction):
     t = get_tournament(interaction.user.id)
     if not t:
-        await interaction.response.send_message("У вас нет активного турнира.", ephemeral=True)
+        await interaction.response.send_message("You have no active tournament.", ephemeral=True)
         return
     if not t["matches"]:
-        await interaction.response.send_message("Сетка ещё не создана. Запустите `/start_tournament`.", ephemeral=True)
+        await interaction.response.send_message("Bracket not created yet. Run `/start_tournament`.", ephemeral=True)
         return
     text = build_bracket_text(t)
-    embed = discord.Embed(title=f"{t['name']} — Сетка", description=text, color=discord.Color.purple())
+    embed = discord.Embed(title=f"{t['name']} — Bracket", description=text, color=discord.Color.purple())
     await interaction.response.send_message(embed=embed)
 
 bot.run(TOKEN)
