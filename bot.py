@@ -382,7 +382,7 @@ class SetupModal(discord.ui.Modal, title="Настройка турнира STOR
                         "🏅 **Top 8** - 960 Emeralds\n"
                         "🎖️ **Top 16** - 400 Emeralds\n"
                         "―――――――――――――――――――――――――――――\n"
-                        "**NoobCorp** - Register using the buttons below!",
+                        "**Storm Arena** - Register using the buttons below!",
             color=discord.Color.purple()
         )
         embed.set_image(url="https://i.imgur.com/MRSAURq.png")
@@ -552,4 +552,4 @@ async def bracket(interaction: discord.Interaction):
 
 # ==================== ЗАПУСК ====================
 
-bot.run(TOKEN)
+bot.run(MTU1NDE1MTg5NzcyNjcxODA0Mg.GTK3dJ.zuqiGnBSSclI10IZwrBFQHf2ufX12FobuPhjRU)
