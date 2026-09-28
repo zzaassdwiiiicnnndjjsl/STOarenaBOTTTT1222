@@ -21,27 +21,6 @@ REGIONS = {
     "Asia": "ASIA"
 }
 
-MAPS = {
-    "Гонки (Race)": [
-        "Jungle Roll", "Over and Under", "Icy Heights", "Space Race", "Cannon Climb",
-        "Pivot Push", "Floor Flip", "Lava Rush", "Humble Stumble", "Paint Splash",
-        "Lost Temple", "Spin Go Round", "Super Slide", "Tile Fall", "Crab's Landing",
-        "Hot Wheels Hustle", "Turbo Temple", "Ice Caramba", "Stumble Trouble",
-        "Super Lava Slide", "Super Paint Slide", "Super Pivot Slide", "Cannonball Chaos",
-        "Abduction Avenue", "Abducted Avenue", "Burrito Bonanza", "Monopoly Rush",
-        "MrBeast's Warehouse", "Scaffold Stumble", "Stumble Cove", "Tetris Tumble",
-        "Treasure Island", "Yeti Yeets"
-    ],
-    "Выживание (Elimination)": [
-        "Laser Tracer", "Honey Drop", "Bombardment", "Block Dash", "Lava Land",
-        "Bot Bash", "Space Drop", "Space Drooop", "Space Droooooop", "Block Dash Endless",
-        "Laser Dash", "Acid Pool", "MrBeast's Disco Drop", "Yeti Yeets", "The Other Side",
-        "Sh-AAARRGH-ks!", "Sharkmuda Triangle", "UFOMG!"
-    ],
-    "Командные (Team)": ["Stumble Soccer", "Rocket Rumble"],
-    "Сбор (Collection)": ["Treasure Island", "Skyrocket Royale", "Pac-Man Power"]
-}
-
 ABILITIES = [
     "Punch", "Slap", "Slide", "Brief Case", "Invisibility", "Bumper Field",
     "Bounching Ball", "Hat Hop", "Shutdown", "Block Throw", "Block Wall",
@@ -162,18 +141,11 @@ def build_tournament_embed(t):
                     "―――――――――――――――――――――――――――――\n"
                     "**Tournament Details**\n"
                     "**Format** - `1v1`\n"
-                    f"**Map** - `{t.get('map') or 'Выберите карту ниже'}`\n"
-                    f"**Ability** - `{t.get('ability') or 'Выберите способность ниже'}`\n"
+                    f"**Map** - `{t.get('map') or '—'}`\n"
+                    f"**Ability** - `{t.get('ability') or '—'}`\n"
                     "**Registrations open**\n"
-                    "**Top 4 also wins** `4K` - `[W] Classic J!`\n"
                     "―――――――――――――――――――――――――――――\n"
-                    f"**Prize Total - {t.get('prize', '—')}**\n"
-                    "**1st** - 6,000 Emeralds\n"
-                    "**2nd** - 3,600 Emeralds\n"
-                    "**Top 4** - 1,800 Emeralds\n"
-                    "**Top 8** - 960 Emeralds\n"
-                    "**Top 16** - 400 Emeralds\n"
-                    "―――――――――――――――――――――――――――――\n"
+
                     "**Storm Arena** - Register using the buttons below!",
         color=discord.Color.purple()
     )
@@ -215,64 +187,10 @@ async def update_bracket_message(host_id):
     except Exception:
         pass
 
-class MapSelect(discord.ui.Select):
-    def __init__(self, host_id):
-        self.host_id = host_id
-        options = []
-        for category, map_list in MAPS.items():
-            for map_name in map_list:
-                options.append(discord.SelectOption(label=map_name[:100], description=category[:100]))
-        super().__init__(placeholder="Выберите карту...", min_values=1, max_values=1,
-                         options=options[:25], row=2)
-
-    async def callback(self, interaction: discord.Interaction):
-        t = tournaments.get(self.host_id)
-        if not t:
-            await interaction.response.send_message("Турнир не найден.", ephemeral=True)
-            return
-        t["map"] = self.values[0]
-        await update_tournament_message(self.host_id)
-        await interaction.response.send_message(f"Карта: **{self.values[0]}**", ephemeral=True)
-
-class AbilitySelect(discord.ui.Select):
-    def __init__(self, host_id):
-        self.host_id = host_id
-        options = [discord.SelectOption(label=a) for a in ABILITIES[:25]]
-        super().__init__(placeholder="Выберите способность...", min_values=1, max_values=1,
-                         options=options, row=3)
-
-    async def callback(self, interaction: discord.Interaction):
-        t = tournaments.get(self.host_id)
-        if not t:
-            await interaction.response.send_message("Турнир не найден.", ephemeral=True)
-            return
-        t["ability"] = self.values[0]
-        await update_tournament_message(self.host_id)
-        await interaction.response.send_message(f"Способность: **{self.values[0]}**", ephemeral=True)
-
-class RegionSelect(discord.ui.Select):
-    def __init__(self, host_id):
-        self.host_id = host_id
-        options = [discord.SelectOption(label=f"{n} ({c})", value=c) for n, c in REGIONS.items()]
-        super().__init__(placeholder="Выберите регион...", min_values=1, max_values=1,
-                         options=options, row=4)
-
-    async def callback(self, interaction: discord.Interaction):
-        t = tournaments.get(self.host_id)
-        if not t:
-            await interaction.response.send_message("Турнир не найден.", ephemeral=True)
-            return
-        t["region"] = self.values[0]
-        await update_tournament_message(self.host_id)
-        await interaction.response.send_message(f"Регион: **{self.values[0]}**", ephemeral=True)
-
 class TournamentView(discord.ui.View):
     def __init__(self, host_id):
         super().__init__(timeout=None)
         self.host_id = host_id
-        self.add_item(MapSelect(host_id))
-        self.add_item(AbilitySelect(host_id))
-        self.add_item(RegionSelect(host_id))
 
     def _find_tournament(self, interaction):
         for tid, tour in tournaments.items():
@@ -386,11 +304,11 @@ class SetupModal(discord.ui.Modal, title="Настройка турнира STOR
         required=True,
         max_length=100
     )
-    t_prize = discord.ui.TextInput(
-        label="Общий призовой фонд",
-        placeholder="Например: 20,240 Emerald",
+    t_ability = discord.ui.TextInput(
+        label="Способность",
+        placeholder="Например: Punch",
         required=True,
-        max_length=100
+        max_length=50
     )
 
     async def on_submit(self, interaction: discord.Interaction):
@@ -402,7 +320,6 @@ class SetupModal(discord.ui.Modal, title="Настройка турнира STOR
         tournaments[host_id] = {
             "name": self.t_name.value,
             "time_display": format_time(self.t_time.value),
-            "prize": self.t_prize.value,
             "channel_id": interaction.channel_id,
             "message_id": None,
             "bracket_message_id": None,
@@ -411,7 +328,7 @@ class SetupModal(discord.ui.Modal, title="Настройка турнира STOR
             "players": [],
             "matches": [],
             "map": self.t_map.value,
-            "ability": None,
+            "ability": self.t_ability.value,
             "region": region_code
         }
         embed = build_tournament_embed(tournaments[host_id])
