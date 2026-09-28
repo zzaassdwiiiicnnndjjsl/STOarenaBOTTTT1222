@@ -362,12 +362,43 @@ class MatchView(discord.ui.View):
             f"Победитель матча #{self.match_number}: <@{winner_id}>", ephemeral=True)
 
 class SetupModal(discord.ui.Modal, title="Настройка турнира STORM Arena"):
-    t_name = discord.ui.TextInput(label="Название турнира", placeholder="Например: VrynTour1v1", required=True)
-    t_time = discord.ui.TextInput(label="Время начала (HH:MM)", placeholder="Например: 17:15", required=True)
-    t_prize = discord.ui.TextInput(label="Общий призовой фонд", placeholder="Например: 20,240 Emerald", required=True)
+    t_name = discord.ui.TextInput(
+        label="Название турнира",
+        placeholder="Например: VrynTour1v1",
+        required=True,
+        max_length=100
+    )
+    t_time = discord.ui.TextInput(
+        label="Время начала (HH:MM)",
+        placeholder="Например: 17:15",
+        required=True,
+        max_length=5
+    )
+    t_region = discord.ui.TextInput(
+        label="Регион (EU/US/CAM/INW/SA/ASIA)",
+        placeholder="Например: EU",
+        required=True,
+        max_length=10
+    )
+    t_map = discord.ui.TextInput(
+        label="Карта",
+        placeholder="Например: Jungle Roll",
+        required=True,
+        max_length=100
+    )
+    t_prize = discord.ui.TextInput(
+        label="Общий призовой фонд",
+        placeholder="Например: 20,240 Emerald",
+        required=True,
+        max_length=100
+    )
 
     async def on_submit(self, interaction: discord.Interaction):
         host_id = interaction.user.id
+
+        region_input = self.t_region.value.strip().upper()
+        region_code = region_input if region_input in REGIONS.values() else "EU"
+
         tournaments[host_id] = {
             "name": self.t_name.value,
             "time_display": format_time(self.t_time.value),
@@ -379,9 +410,9 @@ class SetupModal(discord.ui.Modal, title="Настройка турнира STOR
             "status": "registration",
             "players": [],
             "matches": [],
-            "map": None,
+            "map": self.t_map.value,
             "ability": None,
-            "region": "EU"
+            "region": region_code
         }
         embed = build_tournament_embed(tournaments[host_id])
         view = TournamentView(host_id)
