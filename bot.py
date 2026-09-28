@@ -1,218 +1,126 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-import sqlite3
 import os
 import random
 import string
 from dotenv import load_dotenv
 
 load_dotenv()
-TOKEN = os.getenv("DISCORD_TOKEN")
+TOKEN = os.getenv("MTU1NDE1MTg5NzcyNjcxODA0Mg.GTK3dJ.zuqiGnBSSclI10IZwrBFQHf2ufX12FobuPhjRU")
 GUILD_ID = int(os.getenv("GUILD_ID", "0"))
 
-# ==================== БАЗА ДАННЫХ ====================
+# ==================== ХРАНИЛИЩЕ В ПАМЯТИ ====================
 
-DB_PATH = "tournaments.db"
-
-def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS tournaments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT,
-            host_id INTEGER,
-            channel_id INTEGER,
-            message_id INTEGER,
-            max_players INTEGER DEFAULT 16,
-            status TEXT DEFAULT 'registration',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS players (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tournament_id INTEGER,
-            user_id INTEGER,
-            username TEXT,
-            seed INTEGER,
-            eliminated INTEGER DEFAULT 0
-        )
-    """)
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS matches (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tournament_id INTEGER,
-            round INTEGER,
-            match_number INTEGER,
-            player1_id INTEGER,
-            player2_id INTEGER,
-            winner_id INTEGER,
-            room_code TEXT,
-            status TEXT DEFAULT 'pending'
-        )
-    """)
-    conn.commit()
-    conn.close()
-
-init_db()
-
-def db():
-    return sqlite3.connect(DB_PATH)
-
-# ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
+# tournaments[host_id] = {
+#   "name": str, "channel_id": int, "message_id": int,
+#   "max_players": int, "status": str,
+#   "players": [ {"user_id": int, "username": str, "seed": int} ],
+#   "matches": [ {"round": int, "number": int, "p1": int|None, "p2": int|None,
+#                 "winner": int|None, "room": str|None, "status": str} ]
+# }
+tournaments = {}
 
 def gen_room_code():
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
 
-def get_tournament_by_host(host_id):
-    conn = db()
-    c = conn.cursor()
-    c.execute("SELECT id, name, channel_id, message_id, max_players, status FROM tournaments WHERE host_id = ? AND status != 'finished' ORDER BY id DESC LIMIT 1", (host_id,))
-    row = c.fetchone()
-    conn.close()
-    return row
+def get_tournament(host_id):
+    return tournaments.get(host_id)
 
-def get_tournament_by_id(tid):
-    conn = db()
-    c = conn.cursor()
-    c.execute("SELECT id, name, host_id, channel_id, message_id, max_players, status FROM tournaments WHERE id = ?", (tid,))
-    row = c.fetchone()
-    conn.close()
-    return row
+def create_bracket(t):
+    """Создаёт сетку на 16 игроков."""
+    max_p = t["max_players"]
+    players = t["players"]
+    slots = [None] * max_p
+    for i, p in enumerate(players[:max_p]):
+        slots[i] = p["user_id"]
 
-def get_players(tid):
-    conn = db()
-    c = conn.cursor()
-    c.execute("SELECT id, user_id, username, seed, eliminated FROM players WHERE tournament_id = ? ORDER BY seed", (tid,))
-    rows = c.fetchall()
-    conn.close()
-    return rows
-
-def get_match(tid, match_number):
-    conn = db()
-    c = conn.cursor()
-    c.execute("SELECT id, round, match_number, player1_id, player2_id, winner_id, room_code, status FROM matches WHERE tournament_id = ? AND match_number = ?", (tid, match_number))
-    row = c.fetchone()
-    conn.close()
-    return row
-
-def create_bracket(tid, max_players):
-    """Создаёт сетку на max_players (16)."""
-    conn = db()
-    c = conn.cursor()
-    # Очистим старые матчи
-    c.execute("DELETE FROM matches WHERE tournament_id = ?", (tid,))
-    players = get_players(tid)
-    # Заполняем пустыми слотами
-    slots = [None] * max_players
-    for i, p in enumerate(players[:max_players]):
-        slots[i] = p[1]  # user_id
-
-    # Раунд 1: 8 матчей для 16 игроков
+    matches = []
     match_num = 1
-    for i in range(0, max_players, 2):
-        p1 = slots[i]
-        p2 = slots[i+1] if i+1 < len(slots) else None
-        c.execute("INSERT INTO matches (tournament_id, round, match_number, player1_id, player2_id) VALUES (?, 1, ?, ?, ?)",
-                  (tid, match_num, p1, p2))
+
+    # Раунд 1: 8 матчей
+    for i in range(0, max_p, 2):
+        matches.append({
+            "round": 1, "number": match_num,
+            "p1": slots[i], "p2": slots[i+1] if i+1 < max_p else None,
+            "winner": None, "room": None, "status": "pending"
+        })
         match_num += 1
-    # Раунд 2: 4 матча (победители раунда 1)
-    for i in range(4):
-        c.execute("INSERT INTO matches (tournament_id, round, match_number, player1_id, player2_id) VALUES (?, 2, ?, NULL, NULL)",
-                  (tid, match_num))
+
+    # Раунд 2: 4 матча
+    for _ in range(4):
+        matches.append({"round": 2, "number": match_num, "p1": None, "p2": None,
+                        "winner": None, "room": None, "status": "pending"})
         match_num += 1
+
     # Раунд 3: 2 матча (полуфинал)
-    for i in range(2):
-        c.execute("INSERT INTO matches (tournament_id, round, match_number, player1_id, player2_id) VALUES (?, 3, ?, NULL, NULL)",
-                  (tid, match_num))
+    for _ in range(2):
+        matches.append({"round": 3, "number": match_num, "p1": None, "p2": None,
+                        "winner": None, "room": None, "status": "pending"})
         match_num += 1
+
     # Раунд 4: 1 матч (финал)
-    c.execute("INSERT INTO matches (tournament_id, round, match_number, player1_id, player2_id) VALUES (?, 4, ?, NULL, NULL)",
-              (tid, match_num))
-    conn.commit()
-    conn.close()
+    matches.append({"round": 4, "number": match_num, "p1": None, "p2": None,
+                    "winner": None, "room": None, "status": "pending"})
 
-def advance_winner(tid, match_id, winner_id):
+    t["matches"] = matches
+
+def advance_winner(t, match_number, winner_id):
     """Продвигает победителя в следующий раунд."""
-    conn = db()
-    c = conn.cursor()
-    c.execute("SELECT round, match_number FROM matches WHERE id = ?", (match_id,))
-    row = c.fetchone()
-    if not row:
-        conn.close()
+    match = next((m for m in t["matches"] if m["number"] == match_number), None)
+    if not match:
         return
-    round_num, match_num = row
-    c.execute("UPDATE matches SET winner_id = ?, status = 'finished' WHERE id = ?", (winner_id, match_id))
+    match["winner"] = winner_id
+    match["status"] = "finished"
+
+    rnd = match["round"]
+    if rnd >= 4:
+        return  # финал — дальше некуда
+
     # Определяем следующий матч
-    if round_num < 4:
-        # Индекс матча в следующем раунде
-        next_match_num = 8 + (match_num - 1) // 2 + 1 if round_num == 1 else (4 + (match_num - 9) // 2 + 1 if round_num == 2 else 6 + (match_num - 5) // 2 + 1)
-        # Упрощённый расчёт: для 16 игроков
-        if round_num == 1:
-            next_match = 8 + ((match_num - 1) // 2) + 1
-        elif round_num == 2:
-            next_match = 12 + ((match_num - 9) // 2) + 1
-        elif round_num == 3:
-            next_match = 14 + ((match_num - 13) // 2) + 1
-        else:
-            conn.close()
-            return
-        c.execute("SELECT id, player1_id, player2_id FROM matches WHERE tournament_id = ? AND match_number = ?", (tid, next_match))
-        next_row = c.fetchone()
-        if next_row:
-            next_id, p1, p2 = next_row
-            # Чётный матч — в слот player1, нечётный — в player2
-            if match_num % 2 == 1:
-                c.execute("UPDATE matches SET player1_id = ? WHERE id = ?", (winner_id, next_id))
-            else:
-                c.execute("UPDATE matches SET player2_id = ? WHERE id = ?", (winner_id, next_id))
-    conn.commit()
-    conn.close()
+    if rnd == 1:
+        next_num = 8 + ((match_number - 1) // 2) + 1
+    elif rnd == 2:
+        next_num = 12 + ((match_number - 9) // 2) + 1
+    else:  # rnd == 3
+        next_num = 14 + ((match_number - 13) // 2) + 1
 
-def build_bracket_text(tid):
-    """Строит текстовое представление сетки."""
-    conn = db()
-    c = conn.cursor()
-    c.execute("SELECT match_number, round, player1_id, player2_id, winner_id, status FROM matches WHERE tournament_id = ? ORDER BY match_number", (tid,))
-    matches = c.fetchall()
-    conn.close()
+    next_match = next((m for m in t["matches"] if m["number"] == next_num), None)
+    if not next_match:
+        return
 
+    if match_number % 2 == 1:
+        next_match["p1"] = winner_id
+    else:
+        next_match["p2"] = winner_id
+
+def get_player_name(t, user_id):
+    if not user_id:
+        return "—"
+    for p in t["players"]:
+        if p["user_id"] == user_id:
+            return p["username"]
+    return f"<@{user_id}>"
+
+def build_bracket_text(t):
     lines = ["**🏆 ТУРНИРНАЯ СЕТКА**\n"]
     current_round = None
     round_names = {1: "Раунд 1", 2: "Четвертьфинал", 3: "Полуфинал", 4: "Финал"}
 
-    for m in matches:
-        m_num, rnd, p1, p2, winner, status = m
-        if rnd != current_round:
-            current_round = rnd
-            lines.append(f"\n**── {round_names.get(rnd, f'Раунд {rnd}')} ──**")
+    for m in t["matches"]:
+        if m["round"] != current_round:
+            current_round = m["round"]
+            lines.append(f"\n**── {round_names.get(m['round'], f'Раунд {m['round']}')} ──**")
 
-        p1_name = "—"
-        p2_name = "—"
-        if p1:
-            conn = db()
-            c = conn.cursor()
-            c.execute("SELECT username FROM players WHERE user_id = ? AND tournament_id = ?", (p1, tid))
-            r = c.fetchone()
-            p1_name = r[0] if r else f"<@{p1}>"
-            conn.close()
-        if p2:
-            conn = db()
-            c = conn.cursor()
-            c.execute("SELECT username FROM players WHERE user_id = ? AND tournament_id = ?", (p2, tid))
-            r = c.fetchone()
-            p2_name = r[0] if r else f"<@{p2}>"
-            conn.close()
-
-        status_icon = "🟢" if status == "in_progress" else "✅" if status == "finished" else "⏳"
-        winner_mark = " 🏆" if winner else ""
-        lines.append(f"`#{m_num:02d}` {status_icon} **{p1_name}** vs **{p2_name}**{winner_mark}")
+        p1 = get_player_name(t, m["p1"])
+        p2 = get_player_name(t, m["p2"])
+        icon = "🟢" if m["status"] == "in_progress" else "✅" if m["status"] == "finished" else "⏳"
+        winner_mark = " 🏆" if m["winner"] else ""
+        lines.append(f"`#{m['number']:02d}` {icon} **{p1}** vs **{p2}**{winner_mark}")
 
     return "\n".join(lines)
 
-# ==================== EMBED И VIEW ====================
+# ==================== VIEW ====================
 
 class TournamentView(discord.ui.View):
     def __init__(self):
@@ -220,65 +128,53 @@ class TournamentView(discord.ui.View):
 
     @discord.ui.button(label="Register", style=discord.ButtonStyle.success, custom_id="btn_register")
     async def register_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        conn = db()
-        c = conn.cursor()
-        c.execute("SELECT id, max_players FROM tournaments WHERE status = 'registration' ORDER BY id DESC LIMIT 1")
-        row = c.fetchone()
-        if not row:
-            conn.close()
+        # Ищем турнир, где идёт регистрация (по последнему созданному)
+        t = None
+        for host_id, tour in tournaments.items():
+            if tour["status"] == "registration" and tour["message_id"] == interaction.message.id:
+                t = tour
+                break
+        if not t:
             await interaction.response.send_message("Регистрация закрыта.", ephemeral=True)
             return
-        tid, max_p = row
-        c.execute("SELECT COUNT(*) FROM players WHERE tournament_id = ?", (tid,))
-        count = c.fetchone()[0]
-        if count >= max_p:
-            conn.close()
+        if len(t["players"]) >= t["max_players"]:
             await interaction.response.send_message("Турнир заполнен.", ephemeral=True)
             return
-        c.execute("SELECT id FROM players WHERE tournament_id = ? AND user_id = ?", (tid, interaction.user.id))
-        if c.fetchone():
-            conn.close()
+        if any(p["user_id"] == interaction.user.id for p in t["players"]):
             await interaction.response.send_message("Вы уже зарегистрированы.", ephemeral=True)
             return
-        c.execute("INSERT INTO players (tournament_id, user_id, username, seed) VALUES (?, ?, ?, ?)",
-                  (tid, interaction.user.id, interaction.user.display_name, count + 1))
-        conn.commit()
-        conn.close()
-        await interaction.response.send_message(f"✅ Вы зарегистрированы! ({count + 1}/{max_p})", ephemeral=True)
+        t["players"].append({
+            "user_id": interaction.user.id,
+            "username": interaction.user.display_name,
+            "seed": len(t["players"]) + 1
+        })
+        await interaction.response.send_message(
+            f"✅ Вы зарегистрированы! ({len(t['players'])}/{t['max_players']})", ephemeral=True)
 
     @discord.ui.button(label="Unregister", style=discord.ButtonStyle.danger, custom_id="btn_unregister")
     async def unregister_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        conn = db()
-        c = conn.cursor()
-        c.execute("SELECT id FROM tournaments WHERE status = 'registration' ORDER BY id DESC LIMIT 1")
-        row = c.fetchone()
-        if not row:
-            conn.close()
+        t = None
+        for tour in tournaments.values():
+            if tour["status"] == "registration" and tour["message_id"] == interaction.message.id:
+                t = tour
+                break
+        if not t:
             await interaction.response.send_message("Регистрация закрыта.", ephemeral=True)
             return
-        tid = row[0]
-        c.execute("DELETE FROM players WHERE tournament_id = ? AND user_id = ?", (tid, interaction.user.id))
-        conn.commit()
-        conn.close()
+        t["players"] = [p for p in t["players"] if p["user_id"] != interaction.user.id]
         await interaction.response.send_message("❌ Вы отменили регистрацию.", ephemeral=True)
 
     @discord.ui.button(label="Players", style=discord.ButtonStyle.secondary, custom_id="btn_players")
     async def players_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        conn = db()
-        c = conn.cursor()
-        c.execute("SELECT id FROM tournaments WHERE status = 'registration' ORDER BY id DESC LIMIT 1")
-        row = c.fetchone()
-        if not row:
-            conn.close()
-            await interaction.response.send_message("Нет активного турнира.", ephemeral=True)
-            return
-        tid = row[0]
-        players = get_players(tid)
-        conn.close()
-        if not players:
+        t = None
+        for tour in tournaments.values():
+            if tour["message_id"] == interaction.message.id:
+                t = tour
+                break
+        if not t or not t["players"]:
             await interaction.response.send_message("Список игроков пуст.", ephemeral=True)
             return
-        text = "\n".join([f"`{p[3]:02d}` <@{p[1]}> — {p[2]}" for p in players])
+        text = "\n".join([f"`{p['seed']:02d}` <@{p['user_id']}> — {p['username']}" for p in t["players"]])
         await interaction.response.send_message(f"**Игроки:**\n{text}", ephemeral=True)
 
     @discord.ui.button(label="Locker", style=discord.ButtonStyle.secondary, custom_id="btn_locker")
@@ -291,9 +187,9 @@ class TournamentView(discord.ui.View):
 
 
 class MatchView(discord.ui.View):
-    def __init__(self, tid, match_number):
+    def __init__(self, host_id, match_number):
         super().__init__(timeout=None)
-        self.tid = tid
+        self.host_id = host_id
         self.match_number = match_number
 
     @discord.ui.button(label="Победил игрок 1", style=discord.ButtonStyle.success)
@@ -305,41 +201,41 @@ class MatchView(discord.ui.View):
         await self.handle_winner(interaction, 2)
 
     async def handle_winner(self, interaction, slot):
-        m = get_match(self.tid, self.match_number)
-        if not m:
+        t = tournaments.get(self.host_id)
+        if not t:
+            await interaction.response.send_message("Турнир не найден.", ephemeral=True)
+            return
+        match = next((m for m in t["matches"] if m["number"] == self.match_number), None)
+        if not match:
             await interaction.response.send_message("Матч не найден.", ephemeral=True)
             return
-        mid, rnd, mnum, p1, p2, winner, room, status = m
-        if winner:
+        if match["winner"]:
             await interaction.response.send_message("Победитель уже отмечен.", ephemeral=True)
             return
-        winner_id = p1 if slot == 1 else p2
+        winner_id = match["p1"] if slot == 1 else match["p2"]
         if not winner_id:
             await interaction.response.send_message("Игрок не определён.", ephemeral=True)
             return
-        advance_winner(self.tid, mid, winner_id)
-        # Обновляем сетку
-        await update_bracket_message(self.tid)
-        await interaction.response.send_message(f"🏆 Победитель матча #{mnum}: <@{winner_id}>", ephemeral=True)
+        advance_winner(t, self.match_number, winner_id)
+        await update_bracket_message(self.host_id)
+        await interaction.response.send_message(
+            f"🏆 Победитель матча #{self.match_number}: <@{winner_id}>", ephemeral=True)
 
-# ==================== ОБНОВЛЕНИЕ СООБЩЕНИЙ ====================
+# ==================== ОБНОВЛЕНИЕ СЕТКИ ====================
 
-async def update_bracket_message(tid):
-    t = get_tournament_by_id(tid)
-    if not t:
+async def update_bracket_message(host_id):
+    t = tournaments.get(host_id)
+    if not t or not t.get("bracket_message_id"):
         return
-    _, name, host_id, channel_id, message_id, max_p, status = t
-    if not channel_id or not message_id:
-        return
-    channel = bot.get_channel(channel_id)
+    channel = bot.get_channel(t["channel_id"])
     if not channel:
         return
     try:
-        msg = await channel.fetch_message(message_id)
+        msg = await channel.fetch_message(t["bracket_message_id"])
     except:
         return
-    text = build_bracket_text(tid)
-    embed = discord.Embed(title=f"🏆 {name} — Сетка", description=text, color=discord.Color.purple())
+    text = build_bracket_text(t)
+    embed = discord.Embed(title=f"🏆 {t['name']} — Сетка", description=text, color=discord.Color.purple())
     try:
         await msg.edit(embed=embed)
     except:
@@ -353,13 +249,18 @@ class SetupModal(discord.ui.Modal, title="Настройка турнира STOR
     t_prize = discord.ui.TextInput(label="Общий призовой фонд", placeholder="Например: 20,240 Emerald", required=True)
 
     async def on_submit(self, interaction: discord.Interaction):
-        conn = db()
-        c = conn.cursor()
-        c.execute("INSERT INTO tournaments (name, host_id, channel_id, max_players, status) VALUES (?, ?, ?, 16, 'registration')",
-                  (self.t_name.value, interaction.user.id, interaction.channel_id))
-        tid = c.lastrowid
-        conn.commit()
-        conn.close()
+        host_id = interaction.user.id
+
+        tournaments[host_id] = {
+            "name": self.t_name.value,
+            "channel_id": interaction.channel_id,
+            "message_id": None,
+            "bracket_message_id": None,
+            "max_players": 16,
+            "status": "registration",
+            "players": [],
+            "matches": []
+        }
 
         embed = discord.Embed(
             title=f"🏆 {self.t_name.value}",
@@ -382,20 +283,16 @@ class SetupModal(discord.ui.Modal, title="Настройка турнира STOR
                         "🏅 **Top 8** - 960 Emeralds\n"
                         "🎖️ **Top 16** - 400 Emeralds\n"
                         "―――――――――――――――――――――――――――――\n"
-                        "**Storm Arena** - Register using the buttons below!",
+                        "**NoobCorp** - Register using the buttons below!",
             color=discord.Color.purple()
         )
         embed.set_image(url="https://i.imgur.com/MRSAURq.png")
         embed.set_thumbnail(url="https://cdn.discordapp.com/icons/1542852842337865728/38e15931c9e781b35321711ddab95f24.png")
 
         view = TournamentView()
-        msg = await interaction.response.send_message(embed=embed, view=view)
-        # Сохраняем message_id
-        conn = db()
-        c = conn.cursor()
-        c.execute("UPDATE tournaments SET message_id = ? WHERE id = ?", (msg.message_id, tid))
-        conn.commit()
-        conn.close()
+        await interaction.response.send_message(embed=embed, view=view)
+        msg = await interaction.original_response()
+        tournaments[host_id]["message_id"] = msg.id
 
 # ==================== БОТ ====================
 
@@ -423,133 +320,108 @@ async def on_ready():
 async def create_tournament(interaction: discord.Interaction):
     await interaction.response.send_modal(SetupModal())
 
-@bot.tree.command(name="qual", description="Добавить игрока в турнир (квалификация)")
-@app_commands.describe(user="Игрок, которого нужно добавить")
+@bot.tree.command(name="qual", description="Добавить игрока в турнир")
+@app_commands.describe(user="Игрок")
 async def qual(interaction: discord.Interaction, user: discord.Member):
-    t = get_tournament_by_host(interaction.user.id)
+    t = get_tournament(interaction.user.id)
     if not t:
-        await interaction.response.send_message("У вас нет активного турнира. Создайте его через `/create_tournament`.", ephemeral=True)
+        await interaction.response.send_message("У вас нет активного турнира.", ephemeral=True)
         return
-    tid, name, channel_id, message_id, max_p, status = t
-    if status != 'registration':
-        await interaction.response.send_message("Регистрация уже закрыта.", ephemeral=True)
+    if t["status"] != "registration":
+        await interaction.response.send_message("Регистрация закрыта.", ephemeral=True)
         return
-    conn = db()
-    c = conn.cursor()
-    c.execute("SELECT COUNT(*) FROM players WHERE tournament_id = ?", (tid,))
-    count = c.fetchone()[0]
-    if count >= max_p:
-        conn.close()
+    if len(t["players"]) >= t["max_players"]:
         await interaction.response.send_message("Турнир заполнен.", ephemeral=True)
         return
-    c.execute("SELECT id FROM players WHERE tournament_id = ? AND user_id = ?", (tid, user.id))
-    if c.fetchone():
-        conn.close()
+    if any(p["user_id"] == user.id for p in t["players"]):
         await interaction.response.send_message(f"{user.mention} уже в турнире.", ephemeral=True)
         return
-    c.execute("INSERT INTO players (tournament_id, user_id, username, seed) VALUES (?, ?, ?, ?)",
-              (tid, user.id, user.display_name, count + 1))
-    conn.commit()
-    conn.close()
-    await interaction.response.send_message(f"✅ {user.mention} добавлен в турнир ({count + 1}/{max_p}).")
+    t["players"].append({"user_id": user.id, "username": user.display_name, "seed": len(t["players"]) + 1})
+    await interaction.response.send_message(
+        f"✅ {user.mention} добавлен ({len(t['players'])}/{t['max_players']}).")
 
 @bot.tree.command(name="start_tournament", description="Запустить турнир и создать сетку")
 async def start_tournament(interaction: discord.Interaction):
-    t = get_tournament_by_host(interaction.user.id)
+    t = get_tournament(interaction.user.id)
     if not t:
         await interaction.response.send_message("У вас нет активного турнира.", ephemeral=True)
         return
-    tid, name, channel_id, message_id, max_p, status = t
-    players = get_players(tid)
-    if len(players) < 2:
-        await interaction.response.send_message("Недостаточно игроков (минимум 2).", ephemeral=True)
+    if len(t["players"]) < 2:
+        await interaction.response.send_message("Недостаточно игроков.", ephemeral=True)
         return
-    create_bracket(tid, max_p)
-    conn = db()
-    c = conn.cursor()
-    c.execute("UPDATE tournaments SET status = 'in_progress' WHERE id = ?", (tid,))
-    conn.commit()
-    conn.close()
-    # Отправляем сетку в канал
-    text = build_bracket_text(tid)
-    embed = discord.Embed(title=f"🏆 {name} — Сетка", description=text, color=discord.Color.purple())
+    create_bracket(t)
+    t["status"] = "in_progress"
+    text = build_bracket_text(t)
+    embed = discord.Embed(title=f"🏆 {t['name']} — Сетка", description=text, color=discord.Color.purple())
     msg = await interaction.channel.send(embed=embed)
-    conn = db()
-    c = conn.cursor()
-    c.execute("UPDATE tournaments SET message_id = ? WHERE id = ?", (msg.id, tid))
-    conn.commit()
-    conn.close()
+    t["bracket_message_id"] = msg.id
     await interaction.response.send_message("✅ Турнир запущен!", ephemeral=True)
 
-@bot.tree.command(name="match", description="Показать информацию о матче")
+@bot.tree.command(name="match", description="Показать матч")
 @app_commands.describe(number="Номер матча")
 async def match(interaction: discord.Interaction, number: int):
-    t = get_tournament_by_host(interaction.user.id)
+    t = get_tournament(interaction.user.id)
     if not t:
         await interaction.response.send_message("У вас нет активного турнира.", ephemeral=True)
         return
-    tid = t[0]
-    m = get_match(tid, number)
+    m = next((x for x in t["matches"] if x["number"] == number), None)
     if not m:
         await interaction.response.send_message(f"Матч #{number} не найден.", ephemeral=True)
         return
-    mid, rnd, mnum, p1, p2, winner, room, status = m
-    p1_name = f"<@{p1}>" if p1 else "—"
-    p2_name = f"<@{p2}>" if p2 else "—"
+    p1 = get_player_name(t, m["p1"])
+    p2 = get_player_name(t, m["p2"])
     embed = discord.Embed(
-        title=f"⚔️ Матч #{mnum} (Раунд {rnd})",
-        description=f"**{p1_name}** vs **{p2_name}**\n\n"
-                    f"Статус: `{status}`\n"
-                    f"Код комнаты: `{room or 'не задан'}`",
+        title=f"⚔️ Матч #{m['number']} (Раунд {m['round']})",
+        description=f"**{p1}** vs **{p2}**\n\n"
+                    f"Статус: `{m['status']}`\n"
+                    f"Код комнаты: `{m['room'] or 'не задан'}`",
         color=discord.Color.orange()
     )
-    view = MatchView(tid, number)
+    view = MatchView(interaction.user.id, number)
     await interaction.response.send_message(embed=embed, view=view)
 
 @bot.tree.command(name="room", description="Отправить игрокам код комнаты в DM")
-@app_commands.describe(number="Номер матча", code="Код комнаты (оставьте пустым для автогенерации)")
+@app_commands.describe(number="Номер матча", code="Код (оставьте пустым для автогенерации)")
 async def room(interaction: discord.Interaction, number: int, code: str = None):
-    t = get_tournament_by_host(interaction.user.id)
+    t = get_tournament(interaction.user.id)
     if not t:
         await interaction.response.send_message("У вас нет активного турнира.", ephemeral=True)
         return
-    tid = t[0]
-    m = get_match(tid, number)
+    m = next((x for x in t["matches"] if x["number"] == number), None)
     if not m:
         await interaction.response.send_message(f"Матч #{number} не найден.", ephemeral=True)
         return
-    mid, rnd, mnum, p1, p2, winner, old_room, status = m
     if not code:
         code = gen_room_code()
-    conn = db()
-    c = conn.cursor()
-    c.execute("UPDATE matches SET room_code = ?, status = 'in_progress' WHERE id = ?", (code, mid))
-    conn.commit()
-    conn.close()
+    m["room"] = code
+    m["status"] = "in_progress"
 
     sent = []
-    for uid in [p1, p2]:
+    for uid in [m["p1"], m["p2"]]:
         if uid:
             try:
                 user = await bot.fetch_user(uid)
-                await user.send(f"🎮 **Матч #{mnum}**\nКод комнаты: `{code}`\nУдачи!")
+                await user.send(f"🎮 **Матч #{m['number']}**\nКод комнаты: `{code}`\nУдачи!")
                 sent.append(f"<@{uid}>")
             except:
                 pass
-    await update_bracket_message(tid)
-    await interaction.response.send_message(f"✅ Код `{code}` отправлен: {', '.join(sent) if sent else 'никому (не удалось)'}")
+    await update_bracket_message(interaction.user.id)
+    await interaction.response.send_message(
+        f"✅ Код `{code}` отправлен: {', '.join(sent) if sent else 'никому'}")
 
-@bot.tree.command(name="bracket", description="Показать текущую турнирную сетку")
+@bot.tree.command(name="bracket", description="Показать текущую сетку")
 async def bracket(interaction: discord.Interaction):
-    t = get_tournament_by_host(interaction.user.id)
+    t = get_tournament(interaction.user.id)
     if not t:
         await interaction.response.send_message("У вас нет активного турнира.", ephemeral=True)
         return
-    tid, name = t[0], t[1]
-    text = build_bracket_text(tid)
-    embed = discord.Embed(title=f"🏆 {name} — Сетка", description=text, color=discord.Color.purple())
+    if not t["matches"]:
+        await interaction.response.send_message("Сетка ещё не создана. Запустите `/start_tournament`.", ephemeral=True)
+        return
+    text = build_bracket_text(t)
+    embed = discord.Embed(title=f"🏆 {t['name']} — Сетка", description=text, color=discord.Color.purple())
     await interaction.response.send_message(embed=embed)
 
 # ==================== ЗАПУСК ====================
 
-bot.run(MTU1NDE1MTg5NzcyNjcxODA0Mg.GTK3dJ.zuqiGnBSSclI10IZwrBFQHf2ufX12FobuPhjRU)
+bot.run(TOKEN)
