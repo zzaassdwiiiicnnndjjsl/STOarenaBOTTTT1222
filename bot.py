@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
-GUILD_ID = int(os.getenv("GUILD_ID", "1552734813209886750"))
+GUILD_ID = int(os.getenv("GUILD_ID", "1542852842337865728"))
 
 TOUR_HOST_ROLE_IDS = [
     1547825149859078234,
